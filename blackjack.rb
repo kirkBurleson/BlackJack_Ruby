@@ -1,15 +1,16 @@
 num_decks = 4
-
-cards = [2,3,4,5,6,7,8,9,10,'J','Q','K','A']
 suits = 4
+cards = [2,3,4,5,6,7,8,9,10,:J,:Q,:K,:A]
+$values = {:A => 11, :K => 10, :Q => 10, :J => 10}
 $shoe = (cards * suits) * num_decks
 $playing = true
 $next = -1
 $player = []
 $dealer = []
+$doubled_down = []
 $bet = 0
 $money = 50.00
-
+$double_aces = false
 
 def shuffle
 	last = $shoe.length
@@ -32,23 +33,17 @@ def next_card
 	$shoe[$next]
 end
 
-def get_card_value card
-	if card == 'J' || card == 'Q' || card == 'K'
-		10
-	elsif card == 'A'
-		11
-	else
-		card.to_i
-	end
+def value_of card
+	(card.class == Symbol) ? $values[card] : card.to_i
 end
 
 def total hand
 	total = 0
 	hand.each do |card|
-		total = total + get_card_value(card)
+		total = total + value_of(card)
 		if total > 21
 			# use ace as 1 instead of 11
-			has_ace = hand.index('A')
+			has_ace = hand.index(:A)
 			if has_ace != nil
 				hand[has_ace] = 1
 				total = total - 10
@@ -56,7 +51,7 @@ def total hand
 		end
 	end
 
-	# length == 2 keeps split aces from blackjacking because of the 's'
+	# length == 2 keeps split aces from blackjacking because of the 's' added to hand
 	if total == 21 && hand.length == 2
 		total = :BLACKJACK
 	elsif total > 21
@@ -67,7 +62,7 @@ def total hand
 end
 
 def has_soft_17? hand
-	hand.index('A') != nil && hand.index(6) != nil
+	hand.index(:A) != nil && hand.index(6) != nil
 end
 
 def collect dealer_total
@@ -76,6 +71,7 @@ def collect dealer_total
 	i = 0
 	$player.each do |hand|
 		score = total hand
+		$bet = ($doubled_down.index(hand)) ? $bet * 2 : $bet
 		
 		if score == :BUST && dealer_total == :BUST
 			#tie
@@ -111,6 +107,14 @@ def collect dealer_total
 	$money = $money + won
 end
 
+def is_double_aces? hand
+	$double_aces = ((hand[0] == 1 || hand[0] == :A) && (hand[1] == 1 || hand[1] == :A))
+end
+
+def can_split? hand
+	(hand.length == 2 && $player.length < 4) && (hand[0] == hand[1]) || (is_double_aces? hand)
+end
+
 def start
 	shuffle
 	while $playing == true
@@ -131,7 +135,7 @@ def start
 		# loop through each hand, one at a time.
 		$player.each do |hand|
 			# this hand is from a split, needs second card
-			if hand.length == 1 then hand.push(next_card) end
+			if hand[0] == 's' && hand.length == 2 then hand.push(next_card) end
 
 			# loop until finished with this hand
 			while true
@@ -140,7 +144,7 @@ def start
 				start = 0
 				while $player[start] != hand
 					# show swapped aces as 'A' instead of 1
-					tmp_hand = $player[start].collect {|x| x == 1 ? 'A' : x}
+					tmp_hand = $player[start].collect {|x| x == 1 ? :A : x}
 					puts "Hand #{start + 1}: #{tmp_hand.join ' '} ----> #{total $player[start]}"
 					start = start + 1
 				end
@@ -160,7 +164,7 @@ def start
 					total = total hand
 					if hand.length == 2 && total > 8 && total < 12 && $money >= ($bet * 2)
 						hand.push(next_card)
-						$bet = $bet * 2
+						$doubled_down.push(hand)
 						break
 					else
 						puts 'Can only double down with 9, 10, or 11 on the first 2 cards.'
@@ -171,11 +175,20 @@ def start
 					# can split pairs only.
 					# maximum of 4 hands.
 					# 's' means the hand's been split
-					if hand.length == 2 && hand[0] == hand[1] && $player.length < 4
+					if can_split? hand
+						# change 1's to :A
+						if $double_aces
+							hand[0] = :A
+							hand[1] = :A
+						end
+						
+						# do split
 						new_hand = [hand[1]]
-
 						hand[1] = next_card
+
+						# mark as split so it can't blackjack
 						hand.unshift('s')
+						new_hand.unshift('s')
 						
 						$player.push(new_hand)
 					else
@@ -225,8 +238,9 @@ def start
 		# prepare for next round
 		$player.clear
 		$dealer.clear
+		$doubled_down.clear
+		$double_aces = false
 	end
 end
-
 
 start
